@@ -19,11 +19,20 @@ app.use('/api', apiRoutes);
 app.get('/health', (req, res) => res.json({ status: 'ok', timestamp: new Date() }));
 
 // Connect to MongoDB and start server
-mongoose.connect(process.env.MONGODB_URI)
+const MONGODB_URI = process.env.MONGODB_URI;
+
+if (!MONGODB_URI) {
+  console.error('MONGODB_URI is not set. Please add it to your environment variables.');
+  process.exit(1);
+}
+
+console.log('Connecting to MongoDB...');
+
+mongoose.connect(MONGODB_URI)
   .then(() => {
     console.log('Connected to MongoDB');
-    app.listen(PORT, () => {
-      console.log(`Server running on http://localhost:${PORT}`);
+    app.listen(PORT, '0.0.0.0', () => {
+      console.log(`Server running on port ${PORT}`);
     });
   })
   .catch((err) => {
