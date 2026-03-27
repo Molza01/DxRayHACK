@@ -15,6 +15,9 @@ app.use(express.json());
 // Routes
 app.use('/api', apiRoutes);
 
+// Root route
+app.get('/', (req, res) => res.json({ message: 'DxRayHack API is running' }));
+
 // Health check
 app.get('/health', (req, res) => res.json({ status: 'ok', timestamp: new Date() }));
 

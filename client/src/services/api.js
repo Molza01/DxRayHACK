@@ -1,6 +1,10 @@
 import axios from 'axios';
 
-const api = axios.create({ baseURL: '/api' });
+const api = axios.create({
+  baseURL: import.meta.env.PROD
+    ? 'https://dxrayhack.onrender.com/api'
+    : '/api',
+});
 
 export const fetchBuilds = (params) => api.get('/builds', { params }).then(r => r.data);
 export const fetchBuild = (id) => api.get(`/builds/${id}`).then(r => r.data);
