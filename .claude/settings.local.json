@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm init:*)",
+      "Bash(npm install:*)",
+      "Bash(npm create:*)",
+      "Bash(npx vite:*)",
+      "Bash(timeout 15 node index.js)",
+      "Bash(node:*)",
+      "Bash(node -e \"console.log\\(require\\(''@xyflow/react/package.json''\\).version\\)\")"
+    ]
+  }
+}
