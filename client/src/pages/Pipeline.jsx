@@ -2,10 +2,10 @@ import { useEffect, useState, useCallback, useMemo } from 'react';
 import { ReactFlow, Background, Controls, MiniMap, Handle, Position, useNodesState, useEdgesState } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import { motion } from 'framer-motion';
-import { RefreshCw, Info } from 'lucide-react';
+import { RefreshCw, Info, Eye, EyeOff } from 'lucide-react';
 import PageTransition from '../animations/PageTransition';
 import StatusBadge from '../components/StatusBadge';
-import { fetchBuilds, fetchBuild } from '../services/api';
+import { fetchBuilds, fetchBuild, fetchAnalytics } from '../services/api';
 
 const statusColors = {
   success: '#34d399',
@@ -15,15 +15,35 @@ const statusColors = {
   in_progress: '#60a5fa',
 };
 
+// Performance overlay colors based on duration severity
+function getLatencyColor(duration, maxDuration) {
+  const ratio = duration / Math.max(maxDuration, 1);
+  if (ratio > 0.7) return '#ef4444'; // red - very slow
+  if (ratio > 0.4) return '#f97316'; // orange - slow
+  if (ratio > 0.2) return '#eab308'; // yellow - moderate
+  return '#22c55e'; // green - fast
+}
+
 function StepNode({ data }) {
-  const borderColor = statusColors[data.status] || '#818cf8';
+  const overlay = data.overlay;
+  let borderColor = statusColors[data.status] || '#818cf8';
+  let glowIntensity = '40';
+
+  if (overlay === 'latency') {
+    borderColor = getLatencyColor(data.duration, data.maxDuration || 300);
+    glowIntensity = '60';
+  } else if (overlay === 'flaky' && data.flakyScore > 0) {
+    borderColor = data.flakyScore > 50 ? '#ef4444' : data.flakyScore > 25 ? '#f97316' : '#eab308';
+    glowIntensity = '60';
+  }
+
   return (
     <div
       className="px-4 py-3 rounded-xl border-2 text-center min-w-[160px] relative"
       style={{
         background: 'rgba(15,15,40,0.9)',
         borderColor,
-        boxShadow: `0 0 12px ${borderColor}40`,
+        boxShadow: `0 0 ${overlay ? '18' : '12'}px ${borderColor}${glowIntensity}`,
       }}
     >
       <Handle
@@ -36,6 +56,19 @@ function StepNode({ data }) {
       <div className="flex justify-center mt-1">
         <StatusBadge status={data.status} />
       </div>
+      {/* Overlay badges */}
+      {overlay === 'latency' && (
+        <div className="absolute -top-2 -right-2 px-1.5 py-0.5 rounded text-[8px] font-bold"
+          style={{ backgroundColor: borderColor, color: '#fff' }}>
+          {data.duration}s
+        </div>
+      )}
+      {overlay === 'flaky' && data.flakyScore > 0 && (
+        <div className="absolute -top-2 -right-2 px-1.5 py-0.5 rounded text-[8px] font-bold"
+          style={{ backgroundColor: borderColor, color: '#fff' }}>
+          {data.flakyScore}%
+        </div>
+      )}
       <Handle
         type="source"
         position={Position.Right}
@@ -76,15 +109,18 @@ export default function Pipeline() {
   const [loading, setLoading] = useState(true);
   const [detail, setDetail] = useState(null);
   const [clickedStep, setClickedStep] = useState(null);
+  const [overlay, setOverlay] = useState('none'); // 'none', 'latency', 'flaky'
+  const [analyticsData, setAnalyticsData] = useState(null);
 
   useEffect(() => {
-    fetchBuilds({ limit: 20 })
-      .then((d) => {
-        setBuilds(d.builds);
-        if (d.builds.length > 0) setSelectedBuild(d.builds[0]._id);
-      })
-      .catch(console.error)
-      .finally(() => setLoading(false));
+    Promise.all([
+      fetchBuilds({ limit: 20 }),
+      fetchAnalytics().catch(() => null),
+    ]).then(([buildsData, analytics]) => {
+      setBuilds(buildsData.builds);
+      setAnalyticsData(analytics);
+      if (buildsData.builds.length > 0) setSelectedBuild(buildsData.builds[0]._id);
+    }).catch(console.error).finally(() => setLoading(false));
   }, []);
 
   useEffect(() => {
@@ -94,7 +130,7 @@ export default function Pipeline() {
       buildGraph(d.steps);
       setClickedStep(null);
     });
-  }, [selectedBuild]);
+  }, [selectedBuild, overlay]);
 
   const buildGraph = useCallback((steps) => {
     if (!steps || steps.length === 0) {
@@ -103,7 +139,14 @@ export default function Pipeline() {
       return;
     }
 
-    // Group steps by jobName
+    // Build flaky score lookup from analytics
+    const flakyLookup = {};
+    if (analyticsData?.flakySteps) {
+      analyticsData.flakySteps.forEach(f => { flakyLookup[f.stepName] = f.instabilityScore; });
+    }
+
+    const maxDuration = Math.max(...steps.map(s => s.duration), 1);
+
     const jobs = {};
     steps.forEach((step) => {
       if (!jobs[step.jobName]) jobs[step.jobName] = [];
@@ -115,7 +158,6 @@ export default function Pipeline() {
     let yOffset = 0;
 
     Object.entries(jobs).forEach(([jobName, jobSteps]) => {
-      // Job header node
       const jobId = `job-${jobName}`;
       newNodes.push({
         id: jobId,
@@ -139,17 +181,28 @@ export default function Pipeline() {
             status: step.status,
             duration: step.duration,
             step,
+            overlay,
+            maxDuration,
+            flakyScore: flakyLookup[step.stepName] || 0,
           },
           draggable: true,
         });
+
+        // Edge color based on overlay
+        let edgeColor = statusColors[step.status] || '#818cf8';
+        if (overlay === 'latency') edgeColor = getLatencyColor(step.duration, maxDuration);
+        if (overlay === 'flaky' && flakyLookup[step.stepName]) {
+          const fs = flakyLookup[step.stepName];
+          edgeColor = fs > 50 ? '#ef4444' : fs > 25 ? '#f97316' : '#eab308';
+        }
 
         newEdges.push({
           id: `edge-${prevId}-${nodeId}`,
           source: prevId,
           target: nodeId,
-          animated: step.status === 'in_progress',
+          animated: step.status === 'in_progress' || (overlay === 'flaky' && flakyLookup[step.stepName] > 25),
           type: 'smoothstep',
-          style: { stroke: statusColors[step.status] || '#818cf8', strokeWidth: 2 },
+          style: { stroke: edgeColor, strokeWidth: overlay !== 'none' ? 3 : 2 },
         });
 
         prevId = nodeId;
@@ -160,12 +213,10 @@ export default function Pipeline() {
 
     setNodes(newNodes);
     setEdges(newEdges);
-  }, [setNodes, setEdges]);
+  }, [setNodes, setEdges, overlay, analyticsData]);
 
   const onNodeClick = useCallback((_, node) => {
-    if (node.data?.step) {
-      setClickedStep(node.data.step);
-    }
+    if (node.data?.step) setClickedStep(node.data.step);
   }, []);
 
   if (loading) {
@@ -184,9 +235,57 @@ export default function Pipeline() {
         <div className="flex items-center justify-between mb-6">
           <div>
             <h1 className="text-3xl font-bold text-white neon-text">Pipeline Graph</h1>
-            <p className="text-slate-400 mt-1">Interactive visualization of CI/CD workflow</p>
+            <p className="text-slate-400 mt-1">Interactive visualization with performance overlays</p>
+          </div>
+          {/* Overlay toggle */}
+          <div className="flex gap-2">
+            {[
+              { id: 'none', label: 'Status', icon: Eye },
+              { id: 'latency', label: 'Latency', icon: Eye },
+              { id: 'flaky', label: 'Flaky', icon: Eye },
+            ].map((o) => (
+              <button
+                key={o.id}
+                onClick={() => setOverlay(o.id)}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+                  overlay === o.id
+                    ? 'bg-indigo-500 text-white shadow-lg shadow-indigo-500/20'
+                    : 'bg-slate-800/50 text-slate-400 hover:text-white'
+                }`}
+              >
+                <o.icon size={14} />
+                {o.label}
+              </button>
+            ))}
           </div>
         </div>
+
+        {/* Overlay legend */}
+        {overlay !== 'none' && (
+          <div className="flex items-center gap-4 mb-4 px-4 py-2 rounded-lg bg-slate-900/50 border border-slate-800/50">
+            <span className="text-xs text-slate-400">
+              {overlay === 'latency' ? 'Latency:' : 'Flaky Score:'}
+            </span>
+            <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1">
+                <div className="w-3 h-3 rounded-sm" style={{ backgroundColor: '#22c55e' }} />
+                <span className="text-[10px] text-slate-500">{overlay === 'latency' ? 'Fast' : 'Stable'}</span>
+              </div>
+              <div className="flex items-center gap-1">
+                <div className="w-3 h-3 rounded-sm" style={{ backgroundColor: '#eab308' }} />
+                <span className="text-[10px] text-slate-500">Moderate</span>
+              </div>
+              <div className="flex items-center gap-1">
+                <div className="w-3 h-3 rounded-sm" style={{ backgroundColor: '#f97316' }} />
+                <span className="text-[10px] text-slate-500">{overlay === 'latency' ? 'Slow' : 'Flaky'}</span>
+              </div>
+              <div className="flex items-center gap-1">
+                <div className="w-3 h-3 rounded-sm" style={{ backgroundColor: '#ef4444' }} />
+                <span className="text-[10px] text-slate-500">{overlay === 'latency' ? 'Very Slow' : 'Very Flaky'}</span>
+              </div>
+            </div>
+          </div>
+        )}
 
         {builds.length === 0 ? (
           <div className="glass p-16 text-center">
@@ -237,7 +336,10 @@ export default function Pipeline() {
                     style={{ background: 'rgba(15,15,40,0.8)', border: '1px solid rgba(99,102,241,0.2)', borderRadius: 12 }}
                   />
                   <MiniMap
-                    nodeColor={(n) => statusColors[n.data?.status] || '#818cf8'}
+                    nodeColor={(n) => {
+                      if (overlay === 'latency') return getLatencyColor(n.data?.duration || 0, n.data?.maxDuration || 300);
+                      return statusColors[n.data?.status] || '#818cf8';
+                    }}
                     maskColor="rgba(5,5,16,0.8)"
                     style={{ background: 'rgba(15,15,40,0.8)', border: '1px solid rgba(99,102,241,0.2)', borderRadius: 12 }}
                   />
@@ -292,28 +394,6 @@ export default function Pipeline() {
                     ))}
                   </div>
                 )}
-              </motion.div>
-            )}
-
-            {/* Steps Overview */}
-            {detail && (
-              <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="glass p-6 mt-6"
-              >
-                <h3 className="text-white font-semibold mb-3">Steps Overview</h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-                  {detail.steps.map((step) => (
-                    <div key={step._id} className="flex items-center gap-3 p-3 rounded-lg bg-slate-900/30 border border-slate-800/50">
-                      <StatusBadge status={step.status} />
-                      <div className="flex-1 min-w-0">
-                        <div className="text-sm text-white truncate">{step.stepName}</div>
-                        <div className="text-xs text-slate-500">{step.duration}s</div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
               </motion.div>
             )}
           </>

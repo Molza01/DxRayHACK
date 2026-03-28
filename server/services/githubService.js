@@ -15,11 +15,21 @@ function getHeaders() {
 // Fetch workflow runs from GitHub Actions API
 async function fetchWorkflowRuns(owner, repo, page = 1, perPage = 30) {
   const url = `${GITHUB_API}/repos/${owner}/${repo}/actions/runs`;
-  const { data } = await axios.get(url, {
-    headers: getHeaders(),
-    params: { page, per_page: perPage },
-  });
-  return data.workflow_runs || [];
+  try {
+    const { data } = await axios.get(url, {
+      headers: getHeaders(),
+      params: { page, per_page: perPage },
+    });
+    return data.workflow_runs || [];
+  } catch (err) {
+    if (err.response?.status === 404) {
+      throw new Error(
+        `GitHub Actions is not enabled or not accessible for this repository. ` +
+        `Make sure the repository uses GitHub Actions and your token has the "actions" scope for private repos.`
+      );
+    }
+    throw err;
+  }
 }
 
 // Fetch jobs for a specific workflow run
@@ -40,7 +50,7 @@ async function verifyRepo(owner, repo) {
   try {
     const url = `${GITHUB_API}/repos/${owner}/${repo}`;
     const { data } = await axios.get(url, { headers: getHeaders() });
-    return { exists: true, fullName: data.full_name, isPrivate: data.private };
+    return { exists: true, fullName: data.full_name, isPrivate: data.private, homepage: data.homepage || '' };
   } catch (err) {
     if (err.response?.status === 404) {
       return { exists: false, reason: 'Repository not found. Make sure the owner and repo name are correct and the repository is public (or your token has access).' };
@@ -50,6 +60,47 @@ async function verifyRepo(owner, repo) {
     }
     return { exists: false, reason: `GitHub API error: ${err.message}` };
   }
+}
+
+// Detect if repo is deployed on Vercel or Render by checking GitHub deployments API and repo metadata
+async function detectDeploymentPlatform(owner, repo, homepage) {
+  const platforms = [];
+
+  // Check homepage URL for platform hints
+  if (homepage) {
+    if (homepage.includes('vercel.app') || homepage.includes('.vercel.')) platforms.push('vercel');
+    if (homepage.includes('onrender.com') || homepage.includes('.render.')) platforms.push('render');
+  }
+
+  // Check GitHub Deployments API for deployment environments
+  try {
+    const url = `${GITHUB_API}/repos/${owner}/${repo}/deployments`;
+    const { data } = await axios.get(url, { headers: getHeaders(), params: { per_page: 20 } });
+    if (data && data.length > 0) {
+      for (const dep of data) {
+        const env = (dep.environment || '').toLowerCase();
+        const desc = (dep.description || '').toLowerCase();
+        const creator = (dep.creator?.login || '').toLowerCase();
+
+        if (creator.includes('vercel') || env.includes('vercel') || desc.includes('vercel')) {
+          if (!platforms.includes('vercel')) platforms.push('vercel');
+        }
+        if (creator.includes('render') || env.includes('render') || desc.includes('render')) {
+          if (!platforms.includes('render')) platforms.push('render');
+        }
+      }
+
+      // If deployments exist but no platform detected, it may be Vercel (uses "Production" environment)
+      if (platforms.length === 0) {
+        const hasProductionEnv = data.some((d) => d.environment === 'Production' || d.environment === 'Preview');
+        if (hasProductionEnv) platforms.push('vercel');
+      }
+    }
+  } catch (e) {
+    // Deployments API not accessible, continue
+  }
+
+  return platforms;
 }
 
 // Sync GitHub Actions data into MongoDB
@@ -70,9 +121,21 @@ async function syncGitHubData(owner, repo) {
 
   // Step 3: Check if repo has any CI/CD workflows
   if (!runs || runs.length === 0) {
+    // Auto-detect if deployed on Vercel/Render
+    const detectedPlatforms = await detectDeploymentPlatform(owner, repo, repoCheck.homepage);
+
+    const platformHints = [];
+    if (detectedPlatforms.includes('vercel')) platformHints.push('Vercel');
+    if (detectedPlatforms.includes('render')) platformHints.push('Render');
+
+    const hint = platformHints.length > 0
+      ? ` We detected this repo may be deployed on ${platformHints.join(' and ')}. Try syncing using the ${platformHints.join('/')} tab instead.`
+      : ' If this project is deployed on Vercel or Render, use those sync options instead.';
+
     return {
       error: true,
-      message: `Repository "${repoCheck.fullName}" exists but has no GitHub Actions workflows. This repository does not use CI/CD pipelines.`,
+      detectedPlatforms,
+      message: `Repository "${repoCheck.fullName}" has no GitHub Actions workflows.${hint}`,
       synced: 0, skipped: 0, errors: 0,
     };
   }
@@ -82,7 +145,7 @@ async function syncGitHubData(owner, repo) {
   for (const run of runs) {
     try {
       // Check if build already exists
-      const existing = await Build.findOne({ runId: run.id });
+      const existing = await Build.findOne({ runId: String(run.id), platform: 'github' });
       if (existing) {
         results.skipped++;
         continue;
@@ -94,13 +157,15 @@ async function syncGitHubData(owner, repo) {
       const build = await Build.create({
         repoName: `${owner}/${repo}`,
         workflowName: run.name,
-        runId: run.id,
+        runId: String(run.id),
+        platform: 'github',
         status,
         duration,
         branch: run.head_branch,
         commitSha: run.head_sha,
         triggeredBy: run.triggering_actor?.login || 'unknown',
         conclusion: run.conclusion,
+        runDate: run.created_at ? new Date(run.created_at) : new Date(),
       });
 
       // Fetch and store jobs/steps

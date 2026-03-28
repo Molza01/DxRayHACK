@@ -135,7 +135,8 @@ async function seedDemoData() {
     const build = await Build.create({
       repoName: 'demo/ci-insight-scanner',
       workflowName: b.workflow,
-      runId: 1000000 + buildCount,
+      runId: String(1000000 + buildCount),
+      platform: 'github',
       status: b.status,
       duration: b.totalDuration,
       branch: b.branch,
@@ -212,4 +213,152 @@ function generateLogs(stepName, status, duration) {
   return lines.join('\n');
 }
 
-module.exports = { seedDemoData };
+// Scenario-based demo presets for hackathon storytelling
+async function seedScenarioData(scenario) {
+  await Build.deleteMany({});
+  await Step.deleteMany({});
+
+  const scenarios = {
+    // Healthy pipeline — high success, fast builds
+    healthy: {
+      label: 'Healthy Pipeline',
+      buildCount: 40,
+      successRate: 0.95,
+      baseDuration: 45,
+      flakyChance: 0.02,
+    },
+    // Bottleneck scenario — slow builds, specific slow steps
+    bottleneck: {
+      label: 'Bottleneck Pipeline',
+      buildCount: 40,
+      successRate: 0.75,
+      baseDuration: 300,
+      flakyChance: 0.05,
+      slowSteps: ['Build Docker image', 'Run e2e tests', 'Deploy to production'],
+    },
+    // Flaky scenario — inconsistent results, high retries
+    flaky: {
+      label: 'Flaky Pipeline',
+      buildCount: 50,
+      successRate: 0.55,
+      flakyChance: 0.35,
+      baseDuration: 120,
+    },
+  };
+
+  const config = scenarios[scenario];
+  if (!config) {
+    return { error: true, message: `Unknown scenario: "${scenario}". Use: healthy, bottleneck, or flaky.` };
+  }
+
+  const workflows = ['CI Pipeline', 'Deploy Production', 'Run Tests'];
+  const branches = ['main', 'develop', 'feature/auth', 'fix/memory-leak', 'hotfix/login'];
+  const users = ['alice', 'bob', 'charlie', 'diana'];
+
+  const stepSets = {
+    'CI Pipeline': [
+      { name: 'Checkout code', base: 5 },
+      { name: 'Install dependencies', base: 45 },
+      { name: 'Run linter', base: 15 },
+      { name: 'Run unit tests', base: 90, flakyMult: 3 },
+      { name: 'Build application', base: 60 },
+      { name: 'Upload artifacts', base: 20 },
+    ],
+    'Deploy Production': [
+      { name: 'Checkout code', base: 4 },
+      { name: 'Build Docker image', base: 120, slowMult: 3 },
+      { name: 'Push to registry', base: 30 },
+      { name: 'Deploy to staging', base: 45 },
+      { name: 'Run smoke tests', base: 60, flakyMult: 4 },
+      { name: 'Deploy to production', base: 40 },
+    ],
+    'Run Tests': [
+      { name: 'Checkout code', base: 5 },
+      { name: 'Install dependencies', base: 50 },
+      { name: 'Run unit tests', base: 120, flakyMult: 2 },
+      { name: 'Run e2e tests', base: 240, flakyMult: 5, slowMult: 2 },
+      { name: 'Generate coverage report', base: 15 },
+    ],
+  };
+
+  const now = Date.now();
+  let count = 0;
+
+  for (let i = 0; i < config.buildCount; i++) {
+    const workflow = workflows[i % workflows.length];
+    const daysAgo = Math.floor(Math.random() * 30);
+    const hoursAgo = Math.floor(Math.random() * 24);
+    const createdAt = new Date(now - daysAgo * 86400000 - hoursAgo * 3600000);
+
+    const isSuccess = Math.random() < config.successRate;
+    const isCancelled = !isSuccess && Math.random() < 0.15;
+    const buildStatus = isSuccess ? 'success' : isCancelled ? 'cancelled' : 'failure';
+
+    const templates = stepSets[workflow];
+    let totalDuration = 0;
+    const buildSteps = [];
+    let failed = false;
+
+    for (const tmpl of templates) {
+      if (failed) {
+        buildSteps.push({ name: tmpl.name, duration: 0, status: 'skipped', startedAt: createdAt, completedAt: createdAt });
+        continue;
+      }
+
+      let dur = tmpl.base * (config.baseDuration / 100) + (Math.random() - 0.5) * tmpl.base * 0.4;
+      // Apply slow multiplier for bottleneck scenario
+      if (config.slowSteps?.includes(tmpl.name) && tmpl.slowMult) dur *= tmpl.slowMult;
+      dur = Math.max(1, Math.round(dur));
+      totalDuration += dur;
+
+      let stepStatus = 'success';
+      const effectiveFlakyChance = config.flakyChance * (tmpl.flakyMult || 1);
+      if (buildStatus === 'failure' && Math.random() < 0.4 && tmpl.flakyMult) {
+        stepStatus = 'failure';
+        failed = true;
+      } else if (Math.random() < effectiveFlakyChance) {
+        stepStatus = 'failure';
+        if (buildStatus === 'success') stepStatus = 'success';
+      }
+
+      const start = new Date(createdAt.getTime() + (totalDuration - dur) * 1000);
+      buildSteps.push({ name: tmpl.name, duration: dur, status: stepStatus, startedAt: start, completedAt: new Date(start.getTime() + dur * 1000) });
+    }
+
+    const build = await Build.create({
+      repoName: `demo/${scenario}-scenario`,
+      workflowName: workflow,
+      runId: String(2000000 + count),
+      platform: 'github',
+      status: buildStatus,
+      duration: totalDuration,
+      branch: branches[Math.floor(Math.random() * branches.length)],
+      commitSha: generateSha(),
+      triggeredBy: users[Math.floor(Math.random() * users.length)],
+      conclusion: buildStatus,
+      runDate: createdAt,
+    });
+
+    for (let si = 0; si < buildSteps.length; si++) {
+      const s = buildSteps[si];
+      await Step.create({
+        buildId: build._id,
+        jobName: workflow,
+        stepName: s.name,
+        stepNumber: si + 1,
+        duration: s.duration,
+        status: s.status,
+        conclusion: s.status,
+        retryCount: s.status === 'failure' && Math.random() < 0.3 ? Math.ceil(Math.random() * 3) : 0,
+        startedAt: s.startedAt,
+        completedAt: s.completedAt,
+        logs: generateLogs(s.name, s.status, s.duration),
+      });
+    }
+    count++;
+  }
+
+  return { message: `Scenario "${config.label}" loaded with ${count} builds`, count };
+}
+
+module.exports = { seedDemoData, seedScenarioData };

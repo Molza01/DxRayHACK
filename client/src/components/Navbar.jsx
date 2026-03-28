@@ -1,17 +1,21 @@
 import { Link, useLocation } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { Activity, LayoutDashboard, GitBranch, AlertTriangle, Scan } from 'lucide-react';
+import { Activity, LayoutDashboard, GitBranch, AlertTriangle, Scan, Target, FileText, Sun, Moon } from 'lucide-react';
+import { useTheme } from '../hooks/useTheme';
 
 const links = [
   { to: '/', label: 'Home', icon: Scan },
   { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
+  { to: '/command-center', label: 'Command Center', icon: Target },
   { to: '/builds', label: 'Builds', icon: Activity },
   { to: '/pipeline', label: 'Pipeline', icon: GitBranch },
   { to: '/insights', label: 'Insights', icon: AlertTriangle },
+  { to: '/docs-scan', label: 'Docs Scan', icon: FileText },
 ];
 
 export default function Navbar() {
   const { pathname } = useLocation();
+  const { theme, toggleTheme } = useTheme();
 
   return (
     <nav className="fixed top-0 left-0 right-0 z-50 glass border-b border-indigo-500/10">
@@ -24,6 +28,18 @@ export default function Navbar() {
         </Link>
 
         <div className="flex items-center gap-1">
+          {/* Theme toggle */}
+          <button
+            onClick={toggleTheme}
+            className="p-2 rounded-lg mr-2 transition-all duration-200 hover:bg-indigo-500/10"
+            title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+          >
+            {theme === 'dark'
+              ? <Sun size={16} className="text-amber-400" />
+              : <Moon size={16} className="text-indigo-400" />
+            }
+          </button>
+
           {links.map(({ to, label, icon: Icon }) => {
             const active = pathname === to;
             return (

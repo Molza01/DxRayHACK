@@ -32,8 +32,22 @@ if (!MONGODB_URI) {
 console.log('Connecting to MongoDB...');
 
 mongoose.connect(MONGODB_URI)
-  .then(() => {
+  .then(async () => {
     console.log('Connected to MongoDB');
+
+    // Drop legacy runId unique index if it exists (replaced by compound index {runId, platform})
+    try {
+      const Build = require('./models/Build');
+      const indexes = await Build.collection.indexes();
+      const legacyIdx = indexes.find((idx) => idx.key?.runId && !idx.key?.platform && idx.unique);
+      if (legacyIdx) {
+        await Build.collection.dropIndex(legacyIdx.name);
+        console.log('Dropped legacy runId unique index');
+      }
+    } catch (e) {
+      // Index may not exist — safe to ignore
+    }
+
     app.listen(PORT, '0.0.0.0', () => {
       console.log(`Server running on port ${PORT}`);
     });
