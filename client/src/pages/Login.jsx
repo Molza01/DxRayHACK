@@ -57,7 +57,7 @@ export default function Login() {
               <Scan size={32} className="text-white" />
             </div>
             <h1 className="text-3xl font-bold text-white">Welcome back</h1>
-            <p className="text-slate-400 mt-2">Sign in to your CI Insight account</p>
+            <p className="text-slate-400 mt-2">Sign in to your RepoXray account</p>
           </div>
 
           {/* Form */}

@@ -47,7 +47,7 @@ export default function Navbar() {
               exit={{ opacity: 0, width: 0 }}
               className="text-lg font-bold gradient-text whitespace-nowrap overflow-hidden"
             >
-              CI Insight
+              RepoXray
             </motion.span>
           )}
         </Link>

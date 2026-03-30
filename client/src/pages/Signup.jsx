@@ -79,7 +79,7 @@ export default function Signup() {
             {step === 'form' ? (
               <>
                 <h1 className="text-3xl font-bold text-white">Create account</h1>
-                <p className="text-slate-400 mt-2">Start analyzing your CI/CD pipelines</p>
+                <p className="text-slate-400 mt-2">Start analyzing your repositories</p>
               </>
             ) : (
               <>
@@ -188,7 +188,7 @@ export default function Signup() {
                   <CheckCircle size={48} className="text-emerald-400 mx-auto" />
                 </motion.div>
                 <p className="text-sm text-slate-300">
-                  Account created! Connect your GitHub to get quick access to your repos when syncing CI/CD pipelines.
+                  Account created! Connect your GitHub to get quick access to your repos on RepoXray.
                 </p>
 
                 <button

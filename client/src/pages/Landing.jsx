@@ -43,8 +43,8 @@ export default function Landing() {
           </motion.div>
 
           <h1 className="text-5xl md:text-7xl font-bold text-white mb-4 neon-text">
-            Build & CI
-            <span className="gradient-text block">Scanner</span>
+            Repo
+            <span className="gradient-text block">Xray</span>
           </h1>
 
           <motion.p
@@ -174,7 +174,7 @@ export default function Landing() {
       {/* Footer */}
       <footer className="relative z-10 border-t border-indigo-500/10 py-8 px-6 text-center">
         <ScrollReveal direction="fade">
-          <p className="text-xs text-slate-500">CI Insight Scanner &bull; DX-Ray Hackathon 2026 &bull; Track A + Track C</p>
+          <p className="text-xs text-slate-500">RepoXray &bull; DX-Ray Hackathon 2026 &bull; Track A + Track C</p>
         </ScrollReveal>
       </footer>
     </div>
