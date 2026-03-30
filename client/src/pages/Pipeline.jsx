@@ -231,7 +231,7 @@ export default function Pipeline() {
 
   return (
     <PageTransition>
-      <div className="max-w-7xl mx-auto px-6 pt-24 pb-12">
+      <div className="max-w-7xl mx-auto px-6 pt-8 pb-12">
         <div className="flex items-center justify-between mb-6">
           <div>
             <h1 className="text-3xl font-bold text-white neon-text">Pipeline Graph</h1>

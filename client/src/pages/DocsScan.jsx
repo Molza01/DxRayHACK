@@ -77,8 +77,12 @@ export default function DocsScan() {
       // Store owner/repo from response for changelog
       if (result.owner && result.repo) {
         setLastSynced({ owner: result.owner, repo: result.repo });
+        const scannedRepo = `${result.owner}/${result.repo}`;
+        setSelectedRepo(scannedRepo);
+        await load(scannedRepo);
+      } else {
+        await load();
       }
-      await load();
       // Auto-load changelog
       if (result.owner && result.repo) {
         try {
@@ -159,7 +163,7 @@ export default function DocsScan() {
 
   return (
     <PageTransition>
-      <div className="max-w-7xl mx-auto px-6 pt-24 pb-12">
+      <div className="max-w-7xl mx-auto px-6 pt-8 pb-12">
         {/* Header */}
         <div className="flex items-center justify-between mb-6">
           <div>

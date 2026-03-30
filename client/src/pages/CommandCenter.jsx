@@ -126,7 +126,7 @@ export default function CommandCenter() {
   if (!data || data.totalBuilds === 0) {
     return (
       <PageTransition>
-        <div className="max-w-7xl mx-auto px-6 pt-24 pb-12 text-center">
+        <div className="max-w-7xl mx-auto px-6 pt-8 pb-12 text-center">
           <Target size={48} className="text-indigo-400 mx-auto mb-4 opacity-50" />
           <h2 className="text-xl text-white mb-2">No data for Command Center</h2>
           <p className="text-slate-400">Sync a platform or load demo data from the Dashboard first.</p>
@@ -141,7 +141,7 @@ export default function CommandCenter() {
 
   return (
     <PageTransition>
-      <div className="max-w-7xl mx-auto px-6 pt-24 pb-12">
+      <div className="max-w-7xl mx-auto px-6 pt-8 pb-12">
         {/* Header */}
         <div className="flex items-center justify-between mb-6">
           <div>

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
-import { Activity, Clock, CheckCircle, XCircle, RefreshCw, Database, Trash2 } from 'lucide-react';
+import { Activity, Clock, CheckCircle, XCircle, RefreshCw, Database, Trash2, GitFork, ChevronDown } from 'lucide-react';
 import PageTransition from '../animations/PageTransition';
 import MetricCard from '../components/MetricCard';
 import HealthGauge from '../components/HealthGauge';
@@ -10,7 +10,8 @@ import BarChartComponent from '../charts/BarChartComponent';
 import PieChartComponent from '../charts/PieChartComponent';
 import HeatmapChart from '../charts/HeatmapChart';
 import ScrollReveal from '../animations/ScrollReveal';
-import { fetchAnalytics, seedDemo, seedScenario, syncGitHub, syncVercel, syncRender, clearData } from '../services/api';
+import { fetchAnalytics, seedDemo, seedScenario, syncGitHub, syncVercel, syncRender, clearData, fetchGitHubRepos } from '../services/api';
+import { useAuth } from '../context/AuthContext';
 
 const PLATFORMS = [
   { id: 'github', label: 'GitHub Actions', color: 'indigo' },
@@ -27,6 +28,9 @@ export default function Dashboard() {
   const [showSync, setShowSync] = useState(false);
   const [syncMessage, setSyncMessage] = useState(null);
   const [selectedRepo, setSelectedRepo] = useState('');
+  const [githubRepos, setGithubRepos] = useState([]);
+  const [repoInputMode, setRepoInputMode] = useState('dropdown'); // 'dropdown' | 'manual'
+  const { user } = useAuth();
 
   const load = async (repo) => {
     setLoading(true);
@@ -41,6 +45,15 @@ export default function Dashboard() {
   };
 
   useEffect(() => { load(); }, []);
+
+  // Fetch user's GitHub repos if connected
+  useEffect(() => {
+    if (user?.githubUsername) {
+      fetchGitHubRepos()
+        .then(data => setGithubRepos(data.repos || []))
+        .catch(() => setGithubRepos([]));
+    }
+  }, [user?.githubUsername]);
 
   const handleRepoChange = (repo) => {
     setSelectedRepo(repo);
@@ -137,7 +150,7 @@ export default function Dashboard() {
 
   return (
     <PageTransition>
-      <div className="max-w-7xl mx-auto px-6 pt-24 pb-12">
+      <div className="max-w-7xl mx-auto px-6 pt-8 pb-12">
         {/* Header */}
         <div className="flex items-center justify-between mb-8">
           <div>
@@ -245,24 +258,75 @@ export default function Dashboard() {
             <div className="flex items-end gap-4">
               {platform === 'github' && (
                 <>
-                  <div className="flex-1">
-                    <label className="text-xs text-slate-400 mb-1 block">Owner</label>
-                    <input
-                      value={syncForm.owner}
-                      onChange={(e) => setSyncForm({ ...syncForm, owner: e.target.value })}
-                      placeholder="e.g. facebook"
-                      className="w-full bg-slate-900/50 border border-indigo-500/20 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500/50"
-                    />
-                  </div>
-                  <div className="flex-1">
-                    <label className="text-xs text-slate-400 mb-1 block">Repository</label>
-                    <input
-                      value={syncForm.repo}
-                      onChange={(e) => setSyncForm({ ...syncForm, repo: e.target.value })}
-                      placeholder="e.g. react"
-                      className="w-full bg-slate-900/50 border border-indigo-500/20 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500/50"
-                    />
-                  </div>
+                  {/* Toggle between dropdown and manual */}
+                  {user?.githubUsername && githubRepos.length > 0 && (
+                    <div className="flex items-center gap-2 self-center mb-0.5">
+                      <button
+                        type="button"
+                        onClick={() => setRepoInputMode('dropdown')}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+                          repoInputMode === 'dropdown' ? 'bg-indigo-500 text-white' : 'bg-slate-800/50 text-slate-400 hover:text-white'
+                        }`}
+                      >
+                        <GitFork size={12} className="inline mr-1" />
+                        My Repos
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setRepoInputMode('manual')}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+                          repoInputMode === 'manual' ? 'bg-indigo-500 text-white' : 'bg-slate-800/50 text-slate-400 hover:text-white'
+                        }`}
+                      >
+                        Manual
+                      </button>
+                    </div>
+                  )}
+
+                  {repoInputMode === 'dropdown' && user?.githubUsername && githubRepos.length > 0 ? (
+                    <div className="flex-1">
+                      <label className="text-xs text-slate-400 mb-1 block">Select Repository</label>
+                      <div className="relative">
+                        <select
+                          value={syncForm.owner && syncForm.repo ? `${syncForm.owner}/${syncForm.repo}` : ''}
+                          onChange={(e) => {
+                            const [owner, repo] = e.target.value.split('/');
+                            setSyncForm({ ...syncForm, owner: owner || '', repo: repo || '' });
+                          }}
+                          className="w-full bg-slate-900/50 border border-indigo-500/20 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500/50 appearance-none cursor-pointer"
+                        >
+                          <option value="">Choose a repository...</option>
+                          {githubRepos.map(r => (
+                            <option key={r.id} value={r.full_name}>
+                              {r.full_name} {r.private ? '(private)' : ''} {r.language ? `- ${r.language}` : ''}
+                            </option>
+                          ))}
+                        </select>
+                        <ChevronDown size={16} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none" />
+                      </div>
+                    </div>
+                  ) : (
+                    <>
+                      <div className="flex-1">
+                        <label className="text-xs text-slate-400 mb-1 block">Owner</label>
+                        <input
+                          value={syncForm.owner}
+                          onChange={(e) => setSyncForm({ ...syncForm, owner: e.target.value })}
+                          placeholder="e.g. facebook"
+                          className="w-full bg-slate-900/50 border border-indigo-500/20 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500/50"
+                        />
+                      </div>
+                      <div className="flex-1">
+                        <label className="text-xs text-slate-400 mb-1 block">Repository</label>
+                        <input
+                          value={syncForm.repo}
+                          onChange={(e) => setSyncForm({ ...syncForm, repo: e.target.value })}
+                          placeholder="e.g. react"
+                          className="w-full bg-slate-900/50 border border-indigo-500/20 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-indigo-500/50"
+                        />
+                      </div>
+                    </>
+                  )}
                 </>
               )}
 
@@ -301,7 +365,9 @@ export default function Dashboard() {
 
             {/* Help text */}
             <div className="mt-3 text-xs text-slate-500">
-              {platform === 'github' && 'Enter the GitHub repository owner and name. Token is configured in .env file.'}
+              {platform === 'github' && (user?.githubUsername
+                ? 'Select from your GitHub repositories or switch to manual mode for other repos.'
+                : 'Enter the GitHub repository owner and name. Connect GitHub in your profile for quick access.')}
               {platform === 'vercel' && 'Enter your Vercel project name (from your Vercel dashboard). Token is configured in .env file.'}
               {platform === 'render' && 'Enter your Render Service ID (starts with "srv-", found in service settings). API key is configured in .env file.'}
             </div>

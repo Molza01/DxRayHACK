@@ -38,7 +38,7 @@ export default function BuildDetail() {
 
   return (
     <PageTransition>
-      <div className="max-w-7xl mx-auto px-6 pt-24 pb-12">
+      <div className="max-w-7xl mx-auto px-6 pt-8 pb-12">
         {/* Header */}
         <Link to="/builds" className="inline-flex items-center gap-2 text-slate-400 hover:text-indigo-400 text-sm mb-6 no-underline transition-colors">
           <ArrowLeft size={16} /> Back to Builds

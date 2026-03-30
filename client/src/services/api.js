@@ -6,6 +6,27 @@ const api = axios.create({
     : '/api',
 });
 
+// Attach JWT token to every request
+api.interceptors.request.use((config) => {
+  const token = localStorage.getItem('token');
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`;
+  }
+  return config;
+});
+
+// Redirect to login on 401
+api.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error.response?.status === 401 && !error.config.url.includes('/auth/')) {
+      localStorage.removeItem('token');
+      window.location.href = '/login';
+    }
+    return Promise.reject(error);
+  }
+);
+
 export const fetchBuilds = (params) => api.get('/builds', { params }).then(r => r.data);
 export const fetchBuild = (id) => api.get(`/builds/${id}`).then(r => r.data);
 export const fetchAnalytics = (repo) => api.get('/analytics', { params: repo ? { repo } : {} }).then(r => r.data);
@@ -24,6 +45,9 @@ export const fetchDocsIssues = (repo) => api.get('/docs/issues', { params: repo 
 export const fetchDocsChangelog = (owner, repo) => api.get('/docs/changelog', { params: { owner, repo } }).then(r => r.data);
 export const fetchDocFix = (issueId) => api.post('/docs/fix', { issueId }).then(r => r.data);
 export const fetchDocFixAll = (repoUrl) => api.post('/docs/fix-all', { repoUrl }).then(r => r.data);
+
+// Auth API
+export const fetchGitHubRepos = () => api.get('/auth/github/repos').then(r => r.data);
 
 // SSE stream for live updates
 export function createSSEStream(onData) {
