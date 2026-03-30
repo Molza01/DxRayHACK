@@ -52,7 +52,7 @@ function calcDuration(createdAt, readyAt) {
 }
 
 // Sync Vercel deployments into MongoDB
-async function syncVercelData(token, projectNameOrId, teamId) {
+async function syncVercelData(token, projectNameOrId, teamId, userId) {
   if (!token) {
     return { error: true, message: 'Vercel API token is required.', synced: 0, skipped: 0, errors: 0 };
   }
@@ -103,7 +103,7 @@ async function syncVercelData(token, projectNameOrId, teamId) {
 
   for (const deploy of deployments) {
     try {
-      const existing = await Build.findOne({ runId: deploy.uid, platform: 'vercel' });
+      const existing = await Build.findOne({ userId, runId: deploy.uid, platform: 'vercel' });
       if (existing) {
         results.skipped++;
         continue;
@@ -123,6 +123,7 @@ async function syncVercelData(token, projectNameOrId, teamId) {
       if (duration <= 0 && status === 'success') duration = 30;
 
       const build = await Build.create({
+        userId,
         repoName: projectName,
         workflowName: deploy.name || projectName,
         runId: deploy.uid,

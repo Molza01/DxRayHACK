@@ -1,6 +1,7 @@
 const mongoose = require('mongoose');
 
 const docSchema = new mongoose.Schema({
+  userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true, index: true },
   repoName: { type: String, required: true, index: true },
   fileName: { type: String, required: true },
   path: { type: String, required: true },
@@ -13,6 +14,6 @@ const docSchema = new mongoose.Schema({
   lastCommitMessage: { type: String },
 }, { timestamps: true });
 
-docSchema.index({ repoName: 1, path: 1 }, { unique: true });
+docSchema.index({ userId: 1, repoName: 1, path: 1 }, { unique: true });
 
 module.exports = mongoose.model('Doc', docSchema);

@@ -1,6 +1,7 @@
 const mongoose = require('mongoose');
 
 const buildSchema = new mongoose.Schema({
+  userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true, index: true },
   repoName: { type: String, required: true, index: true },
   workflowName: { type: String, required: true },
   runId: { type: String, required: true },
@@ -14,7 +15,7 @@ const buildSchema = new mongoose.Schema({
   runDate: { type: Date },
 }, { timestamps: true });
 
-buildSchema.index({ runId: 1, platform: 1 }, { unique: true });
+buildSchema.index({ userId: 1, runId: 1, platform: 1 }, { unique: true });
 
 buildSchema.index({ createdAt: -1 });
 buildSchema.index({ status: 1, createdAt: -1 });

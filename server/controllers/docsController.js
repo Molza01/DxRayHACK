@@ -44,7 +44,7 @@ async function docsSync(req, res) {
     if (!owner || !repo) return res.status(400).json({ error: true, message: 'Repository URL is required.' });
     repo = repo.replace(/\.git$/, '');
 
-    const result = await syncDocs(owner, repo);
+    const result = await syncDocs(owner, repo, req.user._id);
     if (result.error) return res.status(404).json(result);
     res.json({ ...result, owner, repo, message: `Scanned ${result.docsFound} docs and ${result.codeFiles} code files. Found ${result.issues} issues.` });
   } catch (err) {
@@ -55,7 +55,7 @@ async function docsSync(req, res) {
 async function docsHealth(req, res) {
   try {
     const repoName = req.query.repo || null;
-    const health = await getDocsHealth(repoName);
+    const health = await getDocsHealth(repoName, req.user._id);
     res.json(health);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -65,7 +65,7 @@ async function docsHealth(req, res) {
 async function docsIssues(req, res) {
   try {
     const repoName = req.query.repo || null;
-    const issues = await getDocsIssues(repoName);
+    const issues = await getDocsIssues(repoName, req.user._id);
     res.json(issues);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -89,7 +89,7 @@ async function docsFix(req, res) {
     const { issueId } = req.body;
     if (!issueId) return res.status(400).json({ error: true, message: 'issueId is required.' });
 
-    const issue = await DocIssue.findById(issueId).lean();
+    const issue = await DocIssue.findOne({ _id: issueId, userId: req.user._id }).lean();
     if (!issue) return res.status(404).json({ error: true, message: 'Issue not found.' });
 
     // Parse owner/repo from repoName
@@ -129,7 +129,7 @@ async function docsFixAll(req, res) {
     if (!parsed) return res.status(400).json({ error: true, message: 'Invalid repository URL.' });
 
     const repoName = `${parsed.owner}/${parsed.repo}`;
-    const issues = await DocIssue.find({ repoName }).lean();
+    const issues = await DocIssue.find({ repoName, userId: req.user._id }).lean();
     if (issues.length === 0) return res.json({ fixes: [], message: 'No issues found for this repo.' });
 
     // Fetch package.json once

@@ -35,17 +35,28 @@ mongoose.connect(MONGODB_URI)
   .then(async () => {
     console.log('Connected to MongoDB');
 
-    // Drop legacy runId unique index if it exists (replaced by compound index {runId, platform})
+    // Drop legacy indexes that don't include userId (replaced by userId-scoped indexes)
     try {
       const Build = require('./models/Build');
-      const indexes = await Build.collection.indexes();
-      const legacyIdx = indexes.find((idx) => idx.key?.runId && !idx.key?.platform && idx.unique);
-      if (legacyIdx) {
-        await Build.collection.dropIndex(legacyIdx.name);
-        console.log('Dropped legacy runId unique index');
+      const Doc = require('./models/Doc');
+      const buildIndexes = await Build.collection.indexes();
+      for (const idx of buildIndexes) {
+        // Drop old {runId, platform} unique index without userId
+        if (idx.unique && idx.key?.runId && !idx.key?.userId) {
+          await Build.collection.dropIndex(idx.name);
+          console.log('Dropped legacy Build index:', idx.name);
+        }
+      }
+      const docIndexes = await Doc.collection.indexes();
+      for (const idx of docIndexes) {
+        // Drop old {repoName, path} unique index without userId
+        if (idx.unique && idx.key?.repoName && idx.key?.path && !idx.key?.userId) {
+          await Doc.collection.dropIndex(idx.name);
+          console.log('Dropped legacy Doc index:', idx.name);
+        }
       }
     } catch (e) {
-      // Index may not exist — safe to ignore
+      // Indexes may not exist — safe to ignore
     }
 
     app.listen(PORT, '0.0.0.0', () => {

@@ -2,15 +2,18 @@ const Build = require('../models/Build');
 const Step = require('../models/Step');
 
 // Helper: get build IDs for a repo filter (used to filter steps)
-async function getBuildIdsForRepo(repoName) {
-  if (!repoName) return null;
-  const builds = await Build.find({ repoName }).select('_id').lean();
+async function getBuildIdsForRepo(repoName, userId) {
+  const filter = { userId };
+  if (repoName) filter.repoName = repoName;
+  const builds = await Build.find(filter).select('_id').lean();
   return builds.map(b => b._id);
 }
 
 // Helper: build match filter
-function buildFilter(repoName) {
-  return repoName ? { repoName } : {};
+function buildFilter(repoName, userId) {
+  const filter = { userId };
+  if (repoName) filter.repoName = repoName;
+  return filter;
 }
 
 // Helper: step filter using buildIds
@@ -19,14 +22,14 @@ function stepFilter(buildIds) {
 }
 
 // Compute full analytics payload
-async function computeAnalytics(repoName) {
-  // Pre-fetch buildIds if repo filter is active
-  const buildIds = await getBuildIdsForRepo(repoName);
-  const bf = buildFilter(repoName);
-  const sf = stepFilter(buildIds);
+async function computeAnalytics(repoName, userId) {
+  // Pre-fetch buildIds for this user (and optional repo filter)
+  const buildIds = await getBuildIdsForRepo(repoName, userId);
+  const bf = buildFilter(repoName, userId);
+  const sf = stepFilter(buildIds.length > 0 ? buildIds : []);
 
-  // Also get list of all repos for the frontend selector
-  const availableRepos = await Build.distinct('repoName');
+  // Also get list of repos for this user
+  const availableRepos = await Build.distinct('repoName', { userId });
 
   const [
     totalBuilds,

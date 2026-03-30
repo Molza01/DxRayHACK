@@ -13,7 +13,7 @@ async function syncGitHub(req, res) {
     // Strip full URL if user pastes one (e.g. https://github.com/owner/repo)
     repo = repo.replace(/^https?:\/\/github\.com\/[^/]+\//, '').replace(/\/$/, '');
 
-    const result = await syncGitHubData(owner, repo);
+    const result = await syncGitHubData(owner, repo, req.user._id);
 
     if (result.error) {
       return res.status(404).json(result);
@@ -37,7 +37,7 @@ async function syncVercel(req, res) {
       return res.status(400).json({ error: true, message: 'Project name or ID is required.' });
     }
 
-    const result = await syncVercelData(token, projectId);
+    const result = await syncVercelData(token, projectId, null, req.user._id);
 
     if (result.error) {
       return res.status(404).json(result);
@@ -61,7 +61,7 @@ async function syncRender(req, res) {
       return res.status(400).json({ error: true, message: 'Service ID is required.' });
     }
 
-    const result = await syncRenderData(apiKey, serviceId);
+    const result = await syncRenderData(apiKey, serviceId, req.user._id);
 
     if (result.error) {
       return res.status(404).json(result);
@@ -75,7 +75,7 @@ async function syncRender(req, res) {
 
 async function seedDemo(req, res) {
   try {
-    const result = await seedDemoData();
+    const result = await seedDemoData(req.user._id);
     res.json(result);
   } catch (err) {
     res.status(500).json({ error: true, message: err.message });

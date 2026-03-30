@@ -2,8 +2,8 @@ const Build = require('../models/Build');
 const Step = require('../models/Step');
 
 // Generate realistic demo data for the dashboard
-async function seedDemoData() {
-  const existing = await Build.countDocuments();
+async function seedDemoData(userId) {
+  const existing = await Build.countDocuments({ userId });
   if (existing > 0) return { message: 'Data already exists', count: existing };
 
   const workflows = ['CI Pipeline', 'Deploy Production', 'Run Tests', 'Build & Publish', 'Lint & Format'];
@@ -133,6 +133,7 @@ async function seedDemoData() {
   let buildCount = 0;
   for (const b of builds) {
     const build = await Build.create({
+      userId,
       repoName: 'demo/ci-insight-scanner',
       workflowName: b.workflow,
       runId: String(1000000 + buildCount),
@@ -214,9 +215,12 @@ function generateLogs(stepName, status, duration) {
 }
 
 // Scenario-based demo presets for hackathon storytelling
-async function seedScenarioData(scenario) {
-  await Build.deleteMany({});
-  await Step.deleteMany({});
+async function seedScenarioData(scenario, userId) {
+  // Clear only this user's builds and their steps
+  const userBuilds = await Build.find({ userId }).select('_id').lean();
+  const buildIds = userBuilds.map(b => b._id);
+  await Build.deleteMany({ userId });
+  if (buildIds.length > 0) await Step.deleteMany({ buildId: { $in: buildIds } });
 
   const scenarios = {
     // Healthy pipeline — high success, fast builds
@@ -326,6 +330,7 @@ async function seedScenarioData(scenario) {
     }
 
     const build = await Build.create({
+      userId,
       repoName: `demo/${scenario}-scenario`,
       workflowName: workflow,
       runId: String(2000000 + count),

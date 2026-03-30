@@ -43,8 +43,22 @@ router.post('/docs/fix-all', authMiddleware, docsFixAll);
 // Exportable report (JSON)
 router.get('/report', authMiddleware, async (req, res) => {
   try {
-    const report = await generateReport();
-    res.json(report);
+    const { computeAnalytics } = require('../services/analyticsService');
+    const analytics = await computeAnalytics(null, req.user._id);
+    res.json({
+      generatedAt: new Date().toISOString(),
+      summary: {
+        totalBuilds: analytics.totalBuilds,
+        successRate: analytics.successRate,
+        failureRate: analytics.failureRate,
+        avgDuration: analytics.avgDuration,
+        healthScore: analytics.healthScore,
+      },
+      bottlenecks: analytics.bottleneckImpact?.slice(0, 5) || [],
+      flakySteps: analytics.flakySteps?.slice(0, 5) || [],
+      insights: analytics.insights || [],
+      recommendations: analytics.recommendations || [],
+    });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -85,7 +99,7 @@ router.post('/seed', authMiddleware, seedDemo);
 router.post('/seed/:scenario', authMiddleware, async (req, res) => {
   try {
     const { seedScenarioData } = require('../services/seedService');
-    const result = await seedScenarioData(req.params.scenario);
+    const result = await seedScenarioData(req.params.scenario, req.user._id);
     res.json(result);
   } catch (err) {
     res.status(500).json({ error: true, message: err.message });
@@ -99,7 +113,15 @@ router.post('/clear', authMiddleware, async (req, res) => {
     const Step = require('../models/Step');
     const Doc = require('../models/Doc');
     const DocIssue = require('../models/DocIssue');
-    await Promise.all([Build.deleteMany({}), Step.deleteMany({}), Doc.deleteMany({}), DocIssue.deleteMany({})]);
+    const userId = req.user._id;
+    const buildIds = await Build.find({ userId }).select('_id').lean();
+    const buildIdList = buildIds.map(b => b._id);
+    await Promise.all([
+      Build.deleteMany({ userId }),
+      Step.deleteMany({ buildId: { $in: buildIdList } }),
+      Doc.deleteMany({ userId }),
+      DocIssue.deleteMany({ userId }),
+    ]);
     res.json({ message: 'All data cleared' });
   } catch (err) {
     res.status(500).json({ error: err.message });

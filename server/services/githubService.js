@@ -104,7 +104,7 @@ async function detectDeploymentPlatform(owner, repo, homepage) {
 }
 
 // Sync GitHub Actions data into MongoDB
-async function syncGitHubData(owner, repo) {
+async function syncGitHubData(owner, repo, userId) {
   // Step 1: Verify the repo exists
   const repoCheck = await verifyRepo(owner, repo);
   if (!repoCheck.exists) {
@@ -145,7 +145,7 @@ async function syncGitHubData(owner, repo) {
   for (const run of runs) {
     try {
       // Check if build already exists
-      const existing = await Build.findOne({ runId: String(run.id), platform: 'github' });
+      const existing = await Build.findOne({ userId, runId: String(run.id), platform: 'github' });
       if (existing) {
         results.skipped++;
         continue;
@@ -155,6 +155,7 @@ async function syncGitHubData(owner, repo) {
       const status = mapStatus(run.conclusion || run.status);
 
       const build = await Build.create({
+        userId,
         repoName: `${owner}/${repo}`,
         workflowName: run.name,
         runId: String(run.id),

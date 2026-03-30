@@ -57,7 +57,7 @@ async function fetchDeploys(apiKey, serviceId, limit = 50) {
 }
 
 // Sync Render deployment data into MongoDB
-async function syncRenderData(apiKey, serviceId) {
+async function syncRenderData(apiKey, serviceId, userId) {
   if (!apiKey) {
     return { error: true, message: 'Render API key is required.', synced: 0, skipped: 0, errors: 0 };
   }
@@ -92,7 +92,7 @@ async function syncRenderData(apiKey, serviceId) {
   for (const deploy of deploys) {
     try {
       const deployId = deploy.id;
-      const existing = await Build.findOne({ runId: deployId, platform: 'render' });
+      const existing = await Build.findOne({ userId, runId: deployId, platform: 'render' });
       if (existing) {
         results.skipped++;
         continue;
@@ -104,6 +104,7 @@ async function syncRenderData(apiKey, serviceId) {
       const duration = finishedAt ? calcDuration(createdAt, finishedAt) : 0;
 
       const build = await Build.create({
+        userId,
         repoName: serviceName,
         workflowName: `Render Deploy`,
         runId: deployId,

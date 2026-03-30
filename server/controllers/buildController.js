@@ -1,11 +1,11 @@
 const Build = require('../models/Build');
 const Step = require('../models/Step');
 
-// GET /api/builds — list all builds
+// GET /api/builds — list builds for current user
 async function getAllBuilds(req, res) {
   try {
     const { status, workflow, limit = 50, page = 1 } = req.query;
-    const filter = {};
+    const filter = { userId: req.user._id };
     if (status) filter.status = status;
     if (workflow) filter.workflowName = workflow;
 
@@ -21,10 +21,10 @@ async function getAllBuilds(req, res) {
   }
 }
 
-// GET /api/builds/:id — single build with steps
+// GET /api/builds/:id — single build with steps (must belong to user)
 async function getBuildById(req, res) {
   try {
-    const build = await Build.findById(req.params.id);
+    const build = await Build.findOne({ _id: req.params.id, userId: req.user._id });
     if (!build) return res.status(404).json({ error: 'Build not found' });
 
     const steps = await Step.find({ buildId: build._id }).sort({ stepNumber: 1 });

@@ -102,7 +102,7 @@ function isRouteFile(path) {
 // DOCS SYNC — Main orchestrator
 // ============================================
 
-async function syncDocs(owner, repo) {
+async function syncDocs(owner, repo, userId) {
   const repoName = `${owner}/${repo}`;
 
   // Verify repo exists
@@ -127,9 +127,9 @@ async function syncDocs(owner, repo) {
   const codeFiles = tree.filter(f => f.type === 'blob' && isCodeFile(f.path));
   const routeFiles = tree.filter(f => f.type === 'blob' && isRouteFile(f.path));
 
-  // Clear old data for this repo
-  await Doc.deleteMany({ repoName });
-  await DocIssue.deleteMany({ repoName });
+  // Clear old data for this repo+user
+  await Doc.deleteMany({ userId, repoName });
+  await DocIssue.deleteMany({ userId, repoName });
 
   const now = new Date();
   const results = { docsFound: 0, codeFiles: codeFiles.length, issues: 0, synced: 0 };
@@ -142,6 +142,7 @@ async function syncDocs(owner, repo) {
     const status = daysSinceUpdate > 90 ? 'outdated' : daysSinceUpdate > STALE_THRESHOLD_DAYS ? 'stale' : 'fresh';
 
     await Doc.create({
+      userId,
       repoName,
       fileName: file.path.split('/').pop(),
       path: file.path,
@@ -156,6 +157,7 @@ async function syncDocs(owner, repo) {
 
     if (status === 'stale' || status === 'outdated') {
       await DocIssue.create({
+        userId,
         repoName,
         type: 'stale',
         severity: status === 'outdated' ? 'high' : 'medium',
@@ -193,6 +195,7 @@ async function syncDocs(owner, repo) {
           const undocumentedRoutes = routes.filter(r => !docContent.includes(r.path));
           for (const ur of undocumentedRoutes) {
             await DocIssue.create({
+              userId,
               repoName,
               type: 'mismatch',
               severity: 'medium',
@@ -211,6 +214,7 @@ async function syncDocs(owner, repo) {
 
     if (!hasDocCoverage && routes.length > 0) {
       await DocIssue.create({
+        userId,
         repoName,
         type: 'missing',
         severity: 'high',
@@ -228,6 +232,7 @@ async function syncDocs(owner, repo) {
   const hasReadme = docFiles.some(f => f.path.toLowerCase() === 'readme.md');
   if (!hasReadme) {
     await DocIssue.create({
+      userId,
       repoName,
       type: 'missing',
       severity: 'critical',
@@ -242,6 +247,7 @@ async function syncDocs(owner, repo) {
   const hasContributing = docFiles.some(f => f.path.toLowerCase().includes('contributing'));
   if (!hasContributing && codeFiles.length > 10) {
     await DocIssue.create({
+      userId,
       repoName,
       type: 'missing',
       severity: 'low',
@@ -285,8 +291,9 @@ function extractRoutes(content) {
 // DOCS HEALTH ANALYTICS
 // ============================================
 
-async function getDocsHealth(repoName) {
-  const filter = repoName ? { repoName } : {};
+async function getDocsHealth(repoName, userId) {
+  const filter = { userId };
+  if (repoName) filter.repoName = repoName;
   const allDocs = await Doc.find(filter).lean();
 
   if (allDocs.length === 0) {
@@ -298,7 +305,7 @@ async function getDocsHealth(repoName) {
       freshnessPercent: 0,
       healthScore: 0,
       docs: [],
-      availableRepos: await Doc.distinct('repoName'),
+      availableRepos: await Doc.distinct('repoName', { userId }),
     };
   }
 
@@ -329,7 +336,7 @@ async function getDocsHealth(repoName) {
     healthScore: score,
     avgStaleDays: Math.round(allDocs.reduce((s, d) => s + d.staleDays, 0) / allDocs.length),
     docs: sortedDocs,
-    availableRepos: await Doc.distinct('repoName'),
+    availableRepos: await Doc.distinct('repoName', { userId }),
   };
 }
 
@@ -337,8 +344,9 @@ async function getDocsHealth(repoName) {
 // DOCS ISSUES
 // ============================================
 
-async function getDocsIssues(repoName) {
-  const filter = repoName ? { repoName } : {};
+async function getDocsIssues(repoName, userId) {
+  const filter = { userId };
+  if (repoName) filter.repoName = repoName;
   const issues = await DocIssue.find(filter).sort({ severity: -1, createdAt: -1 }).lean();
 
   const missing = issues.filter(i => i.type === 'missing');
